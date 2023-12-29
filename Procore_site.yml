@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  LatestAmazonLinux2AmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+
+Resources:
+  ProcoreRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: ProcoreRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+        - 'arn:aws:iam::aws:policy/AWSCodeCommitFullAccess'
+        - 'arn:aws:iam::aws:policy/AWSCodeCommitPowerUser'
+
+  ProcoreInstanceProfile:
+    Type: 'AWS::IAM::InstanceProfile'
+    Properties:
+      InstanceProfileName: ProcoreInstanceProfile
+      Roles:
+        - !Ref ProcoreRole
+
+  ProcoreLaunchTemplate:
+    Type: 'AWS::EC2::LaunchTemplate'
+    Properties:
+      LaunchTemplateName: 'ProcoreLaunchTemplate'
+      VersionDescription: 'Initial Version'
+      LaunchTemplateData:
+        InstanceType: t2.micro
+        ImageId: !Ref LatestAmazonLinux2AmiId
+        KeyName: IntershipKeys
+        IamInstanceProfile:
+          Arn: !GetAtt ProcoreInstanceProfile.Arn
+        NetworkInterfaces:
+          - AssociatePublicIpAddress: true
+            DeviceIndex: 0
+            SubnetId: subnet-0e4125aa99c261423
+            Groups: 
+              - sg-05a9fd6ea5c038126
+        UserData: 
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            export HOME=/root
+            yum -y update
+            yum -y install httpd
+            systemctl start httpd
+            systemctl enable httpd
+            yum -y install git
+
+            git config --global credential.helper '!aws codecommit credential-helper $@'
+            git config --global credential.UseHttpPath true
+
+            cd /var/www/html || exit 1
+
+            git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/procore_repositor || exit 1
+            cd procore_repositor/ || exit 1
+
+            cp -r . ..
+
+            chown -R apache:apache /var/www/html
+
+            systemctl restart httpd
+
+  ProcoreAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref ProcoreLaunchTemplate
+        Version: '1'
+      MinSize: 1
+      MaxSize: 3
+      DesiredCapacity: 2
+      TargetGroupARNs:
+        - !Ref ProcoreTargetGroup
+      VPCZoneIdentifier:
+        - 'subnet-00d0ecbfc72612233'
+        - 'subnet-0aedac56ad301b65c'
+      Tags:
+        - Key: 'Name'
+          Value: 'ProcoreAutoScalingGroup'
+          PropagateAtLaunch: true
+
+  ProcoreTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      Name: ProcoreTargetGroup
+      Port: 80
+      Protocol: HTTP
+      VpcId: vpc-0290179c45627d575
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 80
+      HealthCheckPath: '/'
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      UnhealthyThresholdCount: 2
+
+  ProcoreApplicationLoadBalancer:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Name: ProcoreApplicationLoadBalancer
+      Scheme: internet-facing
+      Subnets:
+        - 'subnet-00d0ecbfc72612233'
+        - 'subnet-0aedac56ad301b65c'
+      SecurityGroups:
+        - 'sg-0ba60a1ae9a0a63e9'
+
+  ProcoreListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ProcoreTargetGroup
+      LoadBalancerArn: !Ref ProcoreApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+  ProcoreLoadBalancerDNS:
+    Description: DNS Name of the Procore Application Load Balancer
+    Value: !GetAtt ProcoreApplicationLoadBalancer.DNSName
+    Export:
+      Name: ProcoreLoadBalancerDNS

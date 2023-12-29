@@ -1,0 +1,40 @@
+---
+- name: Install CloudWatch agent
+  hosts: bastion  # ELB will act as the bastion host
+  become: true
+
+  tasks:
+    - name: Copy CloudWatch agent installer to bastion host
+      copy:
+        src: /path/to/CloudWatchAgent.zip  # Replace with the actual path to the CloudWatch agent installer
+        dest: /tmp/CloudWatchAgent.zip
+
+    - name: Unzip CloudWatch agent installer
+      command: unzip /tmp/CloudWatchAgent.zip
+      args:
+        chdir: /tmp
+
+    - name: Install CloudWatch agent on bastion host
+      command: sudo ./install-script
+      args:
+        chdir: /tmp/amazon-cloudwatch-agent/bin
+
+- name: Install CloudWatch agent on all EC2 instances
+  hosts: private_instances  # private instances managed by ASG
+  become: true
+
+  tasks:
+    - name: Copy CloudWatch agent installer to private instances
+      copy:
+        src: /path/to/CloudWatchAgent.zip
+        dest: /tmp/CloudWatchAgent.zip
+
+    - name: Unzip CloudWatch agent installer
+      command: unzip /tmp/CloudWatchAgent.zip
+      args:
+        chdir: /tmp
+
+    - name: Install CloudWatch agent on private instances
+      command: sudo ./install-script
+      args:
+        chdir: /tmp/amazon-cloudwatch-agent/bin

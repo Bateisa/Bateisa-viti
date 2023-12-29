@@ -1,0 +1,21 @@
+#!/bin/bash
+export HOME=/root
+yum -y update
+yum -y install httpd
+systemctl start httpd
+systemctl enable httpd
+yum -y install git
+
+git config --global credential.helper '!aws codecommit credential-helper $@'
+git config --global credential.UseHttpPath true
+
+cd /var/www/html || exit 1
+
+git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/procore_repositor || exit 1
+cd procore_repositor/ || exit 1
+
+cp -r . ..
+
+chown -R apache:apache /var/www/html
+
+systemctl restart httpd

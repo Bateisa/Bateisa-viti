@@ -1,0 +1,23 @@
+---
+- name: Install and configure Amazon CloudWatch agent
+  hosts: bastion
+  become: true
+
+  tasks:
+    - name: Install CloudWatch agent using yum
+      yum:
+        name: amazon-cloudwatch-agent
+        state: present
+
+    - name: Copy CloudWatch agent configuration file
+      template:
+        src: templates/amazon-cloudwatch-agent.yml.j2
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+      notify: Start CloudWatch agent
+
+  handlers:
+    - name: Start CloudWatch agent
+      systemd:
+        name: amazon-cloudwatch-agent
+        state: started
+        enabled: yes

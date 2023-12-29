@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Update the system and install Lynis
+yum -y update
+yum -y install lynis
+# Install Lynis using Amazon Linux Extras
+sudo amazon-linux-extras install -y lynis
+
+# Print the path of the Lynis binary
+which lynis
+
+# Create the directory for audit reports on EFS
+mkdir -p /mnt/efs/Audit_Reports
+
+# Schedule Lynis scan using SSM every 2 days at 12:00 PM
+aws ssm create-document --name "LynisAudit" --document-type "Command" --content '{
+  "schemaVersion": "2.2",
+  "description": "Run Lynis Audit",
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "runShellScript",
+      "inputs": [
+        "#!/bin/bash",
+        "lynis audit system --cronjob",
+        "cp /var/log/lynis.log /mnt/efs/Audit_Reports/lynis_$(date +\\%Y\\%m\\%d).log"
+      ]
+    }
+  ]
+}'
+
+# Schedule the Lynis audit to run every 2 days at 12:00 PM
+aws ssm create-association --name "LynisAudit" --targets "Key=tag:Name,Values=BastionHost" --schedule-expression "cron(0 12 */2 ? *)"

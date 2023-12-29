@@ -1,0 +1,20 @@
+# Example content for amazon-cloudwatch-agent.yml.j2
+custom_metrics:
+  - metric_name: MemoryUsage
+    namespace: Custom
+    statistics:
+      - Average
+      - Minimum
+      - Maximum
+    dimensions:
+      - Name: InstanceId
+        Value: i-0be60384e4b30d568
+  - metric_name: DiskSpaceUsage
+    namespace: Custom
+    statistics:
+      - Average
+      - Minimum
+      - Maximum
+    dimensions:
+      - Name: InstanceId
+        Value: i-0be60384e4b30d568

@@ -1,0 +1,36 @@
+#!/bin/bash
+
+# Update the system packages
+yum -y update
+
+# Install necessary packages
+yum -y install httpd amazon-efs-utils
+
+# Install botocore using pip3
+pip3 install botocore
+
+# Start the Apache web server
+yum install httpd -y
+systemctl start httpd
+systemctl enable httpd
+
+# Create a directory for mounting EFS
+mkdir /mnt/efs
+
+# Mount EFS to the created directory
+mount -t efs -o tls fs-0874bea06c2a434fd:/ /mnt/efs
+
+# Change directory to the mounted EFS
+cd /mnt/efs
+
+# Create a 'home' directory
+mkdir home
+
+
+# Display a login banner
+echo "* * * * * * * * * * * * * * * * * * * * * * * * *W A R N I N G * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+This computer system is the property of ProCore Plus. It is for authorized use only. By using this system,
+ all users acknowledge notice of, and agree to comply with, the Acceptable Use of Information Technology Resources Policy (“AUP”).   Unauthorized or improper use of this system may result in administrative disciplinary action, civil charges/criminal penalties, and/or other sanctions as set forth in the AUP. By continuing to use this system you indicate your awareness of and consent to these terms and conditions of use. LOG OFF IMMEDIATELY if you do not agree to the conditions stated in this warning.
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *" > /etc/issue
+echo "Banner /etc/issue" >> /etc/ssh/sshd_config
+systemctl restart sshd

@@ -1,0 +1,31 @@
+---
+- name: Install CloudWatch agent and configure custom metrics
+  hosts: bastion
+  become: true
+
+  tasks:
+    - name: Copy CloudWatch agent installer to bastion host
+      copy:
+        src: /path/to/CloudWatchAgent.zip
+        dest: /tmp/CloudWatchAgent.zip
+
+    - name: Unzip CloudWatch agent installer
+      command: unzip /tmp/CloudWatchAgent.zip
+      args:
+        chdir: /tmp
+
+    - name: Install CloudWatch agent on bastion host
+      command: sudo ./install-script
+      args:
+        chdir: /tmp/amazon-cloudwatch-agent/bin
+
+    - name: Copy CloudWatch agent configuration file
+      copy:
+        src: /path/to/cloudwatch-config.json
+        dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+    - name: Start CloudWatch agent
+      systemd:
+        name: amazon-cloudwatch-agent
+        state: started
+        enabled: yes
