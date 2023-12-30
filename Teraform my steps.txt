@@ -1,0 +1,99 @@
+Step 2: Create a New Terraform Project
+Create a Directory:
+
+Open your terminal or PowerShell and create a new directory for your Terraform project:
+
+
+command= mkdir terraform-wordpress
+command= cd terraform-wordpress
+
+
+command= terraform init
+
+
+Step 3: Write Terraform Configuration
+Add the Terraform Configuration:
+
+command= touch main.tf     = create file and add the config below
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_s3_bucket" "project_bucket" {
+  bucket = "your-project-name-bucket"
+  acl    = "private"
+
+  tags = {
+    Name        = "YourProjectBucket"
+    Environment = "Production"
+  }
+}
+
+
+
+
+---------------------------------------------------------------
+provider "aws" {
+  region     = "us-east-1"
+  access_key = AKIA6HRFZ6UJ5TMSR7GI
+  secret_key = Je+Z5hb0VRelagfLma3cYEm83CnHQxX7bpX8n/IJ
+
+}
+
+resource "aws_s3_bucket" "project_bucket" {
+  bucket = "your-project-name-bucket"
+  acl    = "private"
+
+  tags = {
+    Name        = "YourProjectBucket"
+    Environment = "Production"
+  }
+}
+
+-----------------------------------------------------------------
+$ touch variables.tf
+
+Administrator@DESKTOP-IH2TBC9 MINGW64 ~/terraform-wordpress
+$ cat variables.tf
+variable "database_user" {
+  description = "Username for the MySQL database"
+  type        = string
+}
+
+variable "database_password" {
+  description = "Password for the MySQL database"
+  type        = string
+}
+
+variable "database_name" {
+  description = "Name of the MySQL database"
+  type        = string
+}
+
+
+Administrator@DESKTOP-IH2TBC9 MINGW64 ~/terraform-wordpress
+$
+
+
+-------------------------------------------------------------
+ vim backend.tf
+
+Administrator@DESKTOP-IH2TBC9 MINGW64 ~/terraform-wordpress
+$ cat backend.tf
+terraform {
+  backend "s3" {
+    bucket         = "your-terraform-backend-bucket"
+    key            = "path/to/your/statefile.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    dynamodb_table = "your-lock-table"
+  }
+}
+
+------------------------------------------------
+
+
+Initialize and Apply Terraform:
+command= terraform init
+command= terraform apply

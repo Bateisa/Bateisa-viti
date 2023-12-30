@@ -1,0 +1,246 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Skip to main content
+ABOUT
+TECHNOLOGY STACK
+ARTICLES
+AUTHORS
+PEOPLE BLOG
+WORK @ DOXIMITY
+Terraform S3 Backend Best Practices
+How to set up a secure Terraform backend using AWS S3 + DynamoDB
+Jul 19, 2021 | Jason Bornhoft
+
+This blog post will cover the best practices for configuring a Terraform backend using Amazon Web Services’ S3 bucket and associated resources. It’s easy enough to set up Terraform to just work, but this article will leave you with the skills required to configure a production-ready environment using sane defaults.
+
+Terraform, by Hashicorp, has become the de-facto framework for managing infrastructure as code, and an essential element of managing it is a correctly set up backend. So, let’s jump in!
+
+Installing Terraform
+I take advantage of the easy-to-use tfenv to manage my local Terraform versions. tfenv allows for the installation of multiple Terraform versions, and it’s even smart enough to install a new version, if not found, based on a simple .terraform-version file which we will discuss later.
+
+If you would like to install Terraform the traditional way, just visit the downloads. Select your favorite OS and download the Terraform zip file to your local machine. Once downloaded, simply unzip the file and store the binary in your path. For example, /usr/local/bin is a common location for Mac and Linux users.
+
+It’s a good idea to test your new Terraform installation using the following command:
+
+$ terraform version
+On my local machine, this returns Terraform v1.0.2, which is the version we’ll be using for this tutorial. Now that you have installed the only tool you’ll need, you are ready to begin.
+
+Authenticating with AWS
+The last consideration before getting started is how to grant Terraform access to your AWS resources. If you already have an AWS profile set up with the necessary permissions, you can skip to the next section. For the sake of simplicity, and to avoid telling Terraform directly, I recommend installing aws-cli and then running the command:
+
+$ aws configure
+This will set up your local environment to run Terraform. Another option is to set up the permissions using an IAM role, but that goes beyond the scope of this tutorial.
+
+Getting started with Terraform
+The file structure for Terraform is straightforward. Terraform will run any file with a .tf extension. For this example, we will create two Terraform files:
+main.tf which will contain our provider information
+state.tf which will include all of our state resources
+
+main.tf
+main.tf is a small file that only contains provider information. Our example contains a single provider, AWS, and we are using the most recent version. The region, in this example, is set to us-east-1, but you can set it to whatever your preferred region is.
+
+terraform {
+ required_providers {
+   aws = {
+     source  = "hashicorp/aws"
+     version = "~> 3.0"
+   }
+ }
+}
+
+provider "aws" {
+ region = "us-east-1"
+}
+Now that our main.tf file is complete, we can begin to focus on our state.tf file,; that will contain all of the appropriate resources to properly, and securely maintain our Terraform state file in S3.
+
+Pro tip: While it is possible to leave everything in the main.tf, it is best practice to use separate files for logical distinctions or groupings.
+
+state.tf (Step 1)
+We'll create all of the necessary resources without declaring the S3 backend. The order of the following list of resources to be created is not important.:
+KMS key to allow for the encryption of the state bucket
+KMS alias, which will be referred to later
+S3 bucket with all of the appropriate security configurations
+DynamoDB table, which allows for the locking of the state file
+
+KMS key & alias
+resource "aws_kms_key" "terraform-bucket-key" {
+ description             = "This key is used to encrypt bucket objects"
+ deletion_window_in_days = 10
+ enable_key_rotation     = true
+}
+
+resource "aws_kms_alias" "key-alias" {
+ name          = "alias/terraform-bucket-key"
+ target_key_id = aws_kms_key.terraform-bucket-key.key_id
+}
+The first part, aws_kms_key, creates the KMS key setting deletion_window_in_days to 10 and turning on key rotation.
+
+The second part, aws_kms_alias, provides an alias for the generated key. This alias will later be referenced in the backend resource to come.
+
+S3 bucket
+To create a secure bucket, we create the two following resources:
+
+resource "aws_s3_bucket" "terraform-state" {
+ bucket = "<BUCKET_NAME>"
+ acl    = "private"
+
+ versioning {
+   enabled = true
+ }
+
+ server_side_encryption_configuration {
+   rule {
+     apply_server_side_encryption_by_default {
+       kms_master_key_id = aws_kms_key.terraform-bucket-key.arn
+       sse_algorithm     = "aws:kms"
+     }
+   }
+ }
+}
+
+resource "aws_s3_bucket_public_access_block" "block" {
+ bucket = aws_s3_bucket.terraform-state.id
+
+ block_public_acls       = true
+ block_public_policy     = true
+ ignore_public_acls      = true
+ restrict_public_buckets = true
+}
+Now, change the bucket name, BUCKET_NAME to whatever you prefer. Next, let’s jump into the two resources because there’s a lot to cover.
+
+The first resource, aws_s3_bucket, creates the required bucket with a few essential security features. We turn versioning on and server-side encryption using the KMS key we generated previously.
+
+The second resource, aws_s3_bucket_policy_access_block, guarantees that the bucket is not publicly accessible.
+
+DynamoDB Table
+To prevent two team members from writing to the state file at the same time, we will implement a DynamoDB table lock.
+
+resource "aws_dynamodb_table" "terraform-state" {
+ name           = "terraform-state"
+ read_capacity  = 20
+ write_capacity = 20
+ hash_key       = "LockID"
+
+ attribute {
+   name = "LockID"
+   type = "S"
+ }
+}
+The specifics of the above configuration are not necessary. If you are interested in what each setting means, please refer to the documention.
+
+.terraform-version
+Before we can apply our new Terraform code, the last step is to create a file called .terraform-version in the same directory and write 1.0.2 on the first line, that is all. tfenv will now pick up that version and ensure that it’s installed before any Terraform commands are run.
+
+First Terraform Run
+Now that we have code written out for all of the core resources we’ll need, it is time to run out first Terraform commands. We’ll start with a terraform init to prepare our environment, followed by a terraform apply to “apply” our resources in AWS.
+
+$ terraform init
+The most important output from this command is the following:
+
+Terraform has created a lock file .terraform.lock.hcl to record the provider selections
+Now we’re ready to run terraform apply.
+
+$ terraform apply
+This will output a list of the AWS resources that are going to be created. You are always strongly encouraged to review the output of the plan to ensure that you are fully aware of any changes such as creation, modifications, and deletions.
+
+Do you want to perform these actions?
+  Terraform will perform the actions described above.
+  Only 'yes' will be accepted to approve.
+
+  Enter a value:
+As indicated above, yes is the only acceptable answer in order for the process to continue. The final output you receive after typing yes should look like this.
+
+Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
+state.tf (step 2)
+So far, so good. We’ve created all of the necessary underlying resources required to store our Terraform state file securely in an AWS S3 bucket. However, if we look in the directory where our source files are, you will see the state file is currently being stored locally as terraform.tfstate.
+
+We have to add one more resource to our state.tf file, rerun terraform apply, and everything should turn out as expected. Let’s start by adding the following to the top of the state.tf file.
+
+terraform {
+ backend "s3" {
+   bucket         = "<BUCKET_NAME>"
+   key            = "state/terraform.tfstate"
+   region         = "us-east-1"
+   encrypt        = true
+   kms_key_id     = "alias/terraform-bucket-key"
+   dynamodb_table = "terraform-state"
+ }
+}
+What this section of code does is it tells Terraform that we want to use an S3 backend instead of our local system to manage our state file. The rest of the code block simply references some of the different resources that we created earlier.
+
+Second Terraform Run
+Once again, we are required to run terraform init because we’re changing the management of the state file.
+
+$ terraform init
+The following output is critical.
+
+Do you want to copy the existing state to the new backend?
+  The pre-existing state was found while migrating the previous "local" backend to the newly configured "s3" backend. No existing state was found in the newly
+  configured "s3" backend. Do you want to copy this state to the new "s3"
+  backend? Enter "yes" to copy and "no" to start with an empty state.
+
+  Enter a value:
+Responding yes here will copy the terraform.tfstate file from our local system to the S3 bucket we created with all of the protections and best practices. Once complete, you should see the following:
+
+Terraform has been successfully initialized!
+If you check your local file system, you will no longer see the terraform.tfstate file. Instead, it can be found by logging into your S3 dashboard and searching for your proper bucket.
+
+The final step here is to run terraform plan to ensure that all of the resources in our code have been properly created and that everything is running correctly.
+
+$ terraform plan
+You should receive the following output.
+
+No changes. Your infrastructure matches the configuration.
+Congratulations, everything is up-to-date and working correctly. You have now created a fully functioning set of resources in AWS to manage your state file in a secure S3 bucket with DynamoDB lock protection.
+
+Be sure to follow @doximity_tech if you'd like to be notified about new blog posts.
+
+The Rails Foundation
+Doximity is proud to be a founding Core member of The Rails Foundation.
+
+Go to home page
+Doximity API
+Open Source
+Follow Us
+About
+Technology Stack
+Work @ Doximity
+Meetup
+Videos
+
+© 2023
