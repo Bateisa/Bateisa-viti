@@ -1,0 +1,93 @@
+provider "aws" {
+  region = "us-east-1"  # Replace with your desired AWS region
+}
+# Use the existing VPC
+#data "aws_vpcs" "existing_vpcs" {
+ # ids = ["vpc-0290179c45627d575"]  # Replace with your VPC ID
+#}
+# Use an existing subnet in the VPC
+#data "aws_subnet" "existing_subnet" {
+ # id = "subnet-0e4125aa99c261423"  # Replace with your subnet ID
+#}
+# EC2 Security Group
+resource "aws_security_group" "ec2_sg" {
+  vpc_id = "vpc-0290179c45627d575"
+  # Ingress rule allowing SSH access from anywhere
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+# RDS Security Group
+resource "aws_security_group" "rds_sg" {
+  vpc_id       = "vpc-0290179c45627d575"
+  name_prefix  = "wordpress-db-"
+  # Ingress rule allowing connections only from EC2 Security Group
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ec2_sg.id]
+  }
+}
+# Create a subnet group for RDS
+resource "aws_db_subnet_group" "wordpressdb_subnet_group" {
+  name       = "rds_subnet_group"
+  subnet_ids = ["subnet-0b742bc01cb30e5dd", "subnet-0ce0e197b25be6b26"]
+}
+# Define an RDS instance
+resource "aws_db_instance" "wordpressdb" {
+  allocated_storage    = 20
+  engine               = "mysql"
+  engine_version       = "8.0"
+  instance_class       = "db.t2.micro"
+  username             = "admin"  # Replace with your database username
+  password             = "Password123"  # Replace with your database password
+  identifier           = "wordpressdb"  # Replace with your database name
+  publicly_accessible = false
+  storage_type         = "gp2"
+  multi_az             = false
+  skip_final_snapshot  = true
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  db_subnet_group_name = aws_db_subnet_group.wordpressdb_subnet_group.name
+}
+# Define an EC2 instance
+resource "aws_instance" "example_instance" {
+  ami           = "ami-079db87dc4c10ac91"  # Latest Amazon 2 Linux AMI
+  instance_type = "t2.micro"  # Modify instance type as needed
+  subnet_id              = "subnet-0e4125aa99c261423"
+  associate_public_ip_address = true
+  key_name               = "IntershipKeys"  # Replace with your key pair name
+  vpc_security_group_ids = [aws_security_group.ec2_sg.id]
+  user_data = data.template_file.user_data.rendered
+  tags = {
+    Name = "WordPress-instance"
+  }
+}
+# Output the public IP of the instance
+output "instance_public_ip" {
+  value = aws_instance.example_instance.public_ip
+}
+# -----------------------------------------------
+# Change USERDATA variable value after grabbing RDS endpoint info
+# -----------------------------------------------
+data "template_file" "user_data" {
+  template = file("userdata.sh")
+  vars = {
+    db_username = var.database_user
+    db_user_password = var.database_password
+    db_name = var.database_name
+    db_RDS  = aws_db_instance.wordpressdb.endpoint
+  }
+}
+
+
+
+
+
+
+
+
+
